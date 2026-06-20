@@ -44,7 +44,9 @@ function App() {
             const response = await fetch(`${API_BASE}/matches/`);
             if (!response.ok) throw new Error('Error al conectar con el servidor. Verifica que el backend esté corriendo.');
             const data = await response.json();
-            setMatches(data);
+            // Ordenar los partidos cronológicamente
+            const sortedData = data.sort((a, b) => new Date(a.date) - new Date(b.date));
+            setMatches(sortedData);
             setError(null);
         } catch (err) {
             setError(err.message);
@@ -151,6 +153,9 @@ function App() {
                         <div className="flex items-center gap-3">
                             <button onClick={fetchMatches} className="p-3 bg-white border border-slate-200 rounded-2xl text-slate-400 hover:text-blue-500 hover:border-blue-200 transition-all shadow-sm" title="Actualizar">
                                 🔄
+                            </button>
+                            <button onClick={handleLogout} className="md:hidden p-3 bg-white border border-slate-200 rounded-2xl text-rose-400 hover:text-rose-600 hover:border-rose-200 transition-all shadow-sm" title="Cerrar Sesión">
+                                🚪
                             </button>
                             <div className="flex items-center gap-3 bg-white px-5 py-3 rounded-2xl border border-slate-200 shadow-sm">
                                 <div className="flex flex-col text-right">

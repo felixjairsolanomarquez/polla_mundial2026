@@ -16,15 +16,7 @@ def calculate_points(
     if home_real == home_pred and away_real == away_pred:
         return 5
     
-    # 2. Determinar Resultados (Ganador/Empate)
-    real_winner = 1 if home_real > away_real else (2 if away_real > home_real else 0)
-    pred_winner = 1 if home_pred > away_pred else (2 if away_pred > home_pred else 0)
-    
-    # 3. Acertó Ganador o Empate
-    if real_winner == pred_winner:
-        return 3
-    
-    # 4. Falló
+    # 2. Cualquier otro caso (Falló el marcador exacto)
     return 0
 
 # Ejemplo de uso en un endpoint de actualización de resultado
