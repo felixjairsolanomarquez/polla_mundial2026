@@ -128,8 +128,8 @@ def get_lookups(db: Session = Depends(get_db)):
     phases = db.query(models.Phase).all()
     groups = db.query(models.Group).all()
     teams = db.query(models.Team).all()
-    # Also fetch pending matches for the results tab
-    pending_matches = db.query(models.Match).filter(models.Match.status == models.MatchStatus.SCHEDULED).all()
+    # Fetch all matches for the results tab so admin can re-score FINISHED matches
+    pending_matches = db.query(models.Match).order_by(models.Match.date.desc()).all()
     all_matches = db.query(models.Match).all()
     
     return {
