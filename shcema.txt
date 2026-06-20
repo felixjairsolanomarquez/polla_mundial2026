@@ -1,0 +1,70 @@
+-- Script de creación de base de Datos para MySQL (Hostinger)
+
+-- Desactivar revisión de llaves foráneas para facilitar la creación
+SET FOREIGN_KEY_CHECKS = 0;
+
+-- Tabla de Usuarios
+CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    is_admin BOOLEAN DEFAULT FALSE,
+    INDEX (username),
+    INDEX (email)
+) ENGINE=InnoDB;
+
+-- Tabla de Fases
+CREATE TABLE IF NOT EXISTS phases (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) UNIQUE NOT NULL
+) ENGINE=InnoDB;
+
+-- Tabla de Grupos
+CREATE TABLE IF NOT EXISTS `groups` (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    phase_id INT NOT NULL,
+    FOREIGN KEY (phase_id) REFERENCES phases(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Tabla de Equipos
+CREATE TABLE IF NOT EXISTS teams (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) UNIQUE NOT NULL,
+    flag_url VARCHAR(255),
+    group_id INT,
+    FOREIGN KEY (group_id) REFERENCES `groups`(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- Tabla de Partidos
+CREATE TABLE IF NOT EXISTS matches (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    home_team_id INT NOT NULL,
+    away_team_id INT NOT NULL,
+    phase_id INT NOT NULL,
+    date DATETIME NOT NULL,
+    stadium VARCHAR(100),
+    home_score INT DEFAULT NULL,
+    away_score INT DEFAULT NULL,
+    status ENUM('SCHEDULED', 'FINISHED') DEFAULT 'SCHEDULED',
+    FOREIGN KEY (home_team_id) REFERENCES teams(id),
+    FOREIGN KEY (away_team_id) REFERENCES teams(id),
+    FOREIGN KEY (phase_id) REFERENCES phases(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Tabla de Predicciones
+CREATE TABLE IF NOT EXISTS predictions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    match_id INT NOT NULL,
+    home_prediction INT NOT NULL,
+    away_prediction INT NOT NULL,
+    points_earned INT DEFAULT 0,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Reactivar revisión de llaves foráneas
+SET FOREIGN_KEY_CHECKS = 1;
+
