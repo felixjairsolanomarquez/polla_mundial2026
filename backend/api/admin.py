@@ -129,7 +129,8 @@ def get_lookups(db: Session = Depends(get_db)):
     groups = db.query(models.Group).all()
     teams = db.query(models.Team).all()
     # Fetch all matches for the results tab so admin can re-score FINISHED matches
-    pending_matches = db.query(models.Match).order_by(models.Match.date.desc()).all()
+    # Fetch matches that are not finished for the results tab
+    pending_matches = db.query(models.Match).filter(models.Match.status != models.MatchStatus.FINISHED).order_by(models.Match.date.asc()).all()
     all_matches = db.query(models.Match).all()
     
     return {

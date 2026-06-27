@@ -270,25 +270,27 @@ const AdminDashboard = ({ apiBase, refreshTrigger }) => {
                                 CARTELERA DE PARTIDOS
                             </h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                {lookups.all_matches && lookups.all_matches.map(m => (
-                                    <div key={m.id} className="bg-white border border-slate-100 p-6 rounded-[2rem] shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
-                                        <div className="flex justify-between items-start mb-4">
-                                            <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest bg-blue-50 px-3 py-1 rounded-full">{m.phase}</span>
-                                            <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full ${m.status?.toUpperCase() === 'FINISHED' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
-                                                {m.status?.toUpperCase() === 'FINISHED' ? 'Finalizado' : 'Programado'}
-                                            </span>
+                                {lookups.all_matches && lookups.all_matches
+                                    .filter(m => m.status?.toUpperCase() !== 'FINISHED' || filterGroup !== '')
+                                    .map(m => (
+                                        <div key={m.id} className="bg-white border border-slate-100 p-6 rounded-[2rem] shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                                            <div className="flex justify-between items-start mb-4">
+                                                <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest bg-blue-50 px-3 py-1 rounded-full">{m.phase}</span>
+                                                <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full ${m.status?.toUpperCase() === 'FINISHED' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
+                                                    {m.status?.toUpperCase() === 'FINISHED' ? 'Finalizado' : 'Programado'}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center justify-center gap-4 text-center">
+                                                <span className="font-black text-slate-700 flex-1 truncate">{m.home}</span>
+                                                <span className="text-slate-200 italic font-bold">vs</span>
+                                                <span className="font-black text-slate-700 flex-1 truncate">{m.away}</span>
+                                            </div>
+                                            <div className="mt-4 pt-4 border-t border-slate-50 flex justify-between items-center text-[10px] text-slate-400 font-bold">
+                                                <span>📅 {new Date(m.date).toLocaleString('es-CO', { timeZone: 'America/Bogota', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                                <span>🆔 #{m.id}</span>
+                                            </div>
                                         </div>
-                                        <div className="flex items-center justify-center gap-4 text-center">
-                                            <span className="font-black text-slate-700 flex-1 truncate">{m.home}</span>
-                                            <span className="text-slate-200 italic font-bold">vs</span>
-                                            <span className="font-black text-slate-700 flex-1 truncate">{m.away}</span>
-                                        </div>
-                                        <div className="mt-4 pt-4 border-t border-slate-50 flex justify-between items-center text-[10px] text-slate-400 font-bold">
-                                            <span>📅 {new Date(m.date).toLocaleString('es-CO', { timeZone: 'America/Bogota', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-                                            <span>🆔 #{m.id}</span>
-                                        </div>
-                                    </div>
-                                ))}
+                                    ))}
                             </div>
                         </div>
                     </div>

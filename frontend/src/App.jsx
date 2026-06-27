@@ -25,6 +25,7 @@ function App() {
     const [error, setError] = useState(null);
     const [activeTab, setActiveTab] = useState('inicio');
     const [refreshTrigger, setRefreshTrigger] = useState(0);
+    const [dateFilter, setDateFilter] = useState('');
 
     // Cargar usuario inicial desde localStorage
     const [user, setUser] = useState(() => {
@@ -59,6 +60,26 @@ function App() {
     useEffect(() => {
         fetchMatches();
     }, [user]);
+
+    // Fechas únicas disponibles para el filtro
+    const availableDates = [...new Set(
+        matches.map(m => {
+            const d = new Date(m.date);
+            return d.toLocaleDateString('es-CO', { timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit' });
+        })
+    )];
+
+    const filterByDate = (matchList) => {
+        if (!dateFilter) return matchList;
+        return matchList.filter(m => {
+            const d = new Date(m.date);
+            const label = d.toLocaleDateString('es-CO', { timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit' });
+            return label === dateFilter;
+        });
+    };
+
+    const upcomingMatches = filterByDate(matches.filter(m => m.status?.toUpperCase() !== 'FINISHED'));
+    const finishedMatches = filterByDate(matches.filter(m => m.status?.toUpperCase() === 'FINISHED'));
 
     const handleLogin = (username, token, is_admin, id) => {
         const userData = { username, token, is_admin, id };
@@ -170,12 +191,30 @@ function App() {
                     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                         {activeTab === 'inicio' && (
                             <div className="space-y-12">
+                                {/* Filtro por fecha */}
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <span className="text-xs font-black text-slate-500 uppercase tracking-widest">📅 Filtrar por fecha:</span>
+                                    <button
+                                        onClick={() => setDateFilter('')}
+                                        className={`px-4 py-2 rounded-2xl text-xs font-black uppercase transition-all ${dateFilter === '' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white border border-slate-200 text-slate-500 hover:border-blue-300'
+                                            }`}
+                                    >
+                                        Todos
+                                    </button>
+                                    {availableDates.map(date => (
+                                        <button
+                                            key={date}
+                                            onClick={() => setDateFilter(date)}
+                                            className={`px-4 py-2 rounded-2xl text-xs font-black uppercase transition-all ${dateFilter === date ? 'bg-blue-600 text-white shadow-lg' : 'bg-white border border-slate-200 text-slate-500 hover:border-blue-300'
+                                                }`}
+                                        >
+                                            {date}
+                                        </button>
+                                    ))}
+                                </div>
+
                                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                                    <div className="lg:col-span-2">
-                                        <h3 className="text-xl font-black text-slate-700 mb-6 flex items-center gap-2">
-                                            <span className="w-2 h-8 bg-blue-600 rounded-full"></span>
-                                            PRÓXIMOS ENCUENTROS
-                                        </h3>
+                                    <div className="lg:col-span-2 space-y-10">
                                         {loading && <div className="text-center py-20 text-blue-500 font-bold text-xl animate-pulse">Cargando la pasión...</div>}
                                         {error && (
                                             <div className="bg-rose-50 border border-rose-200 p-8 rounded-3xl text-rose-600 font-bold text-center shadow-sm mb-8">
@@ -183,6 +222,41 @@ function App() {
                                                 <button onClick={fetchMatches} className="mt-4 px-6 py-2 bg-rose-600 text-white rounded-xl text-sm">Reintentar</button>
                                             </div>
                                         )}
+
+                                        {/* Partidos Pendientes */}
+                                        {!loading && !error && (
+                                            <div>
+                                                <h3 className="text-xl font-black text-slate-700 mb-6 flex items-center gap-2">
+                                                    <span className="w-2 h-8 bg-blue-600 rounded-full"></span>
+                                                    PRÓXIMOS ENCUENTROS
+                                                    <span className="ml-2 bg-blue-100 text-blue-600 text-xs font-black px-3 py-1 rounded-full">{upcomingMatches.length}</span>
+                                                </h3>
+                                                {upcomingMatches.length === 0 ? (
+                                                    <div className="text-center py-12 bg-white rounded-[2rem] border border-dashed border-slate-200 text-slate-400 font-bold">
+                                                        No hay partidos pendientes{dateFilter ? ` para el ${dateFilter}` : ''}.
+                                                    </div>
+                                                ) : (
+                                                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                                                        {upcomingMatches.map(m => <MatchCard key={m.id} match={m} funFacts={sampleFunFacts} userId={user.id} apiBase={API_BASE} />)}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* Partidos Finalizados - Solo se muestran si hay un filtro de fecha activo */}
+                                        {!loading && !error && dateFilter && finishedMatches.length > 0 && (
+                                            <div>
+                                                <h3 className="text-xl font-black text-emerald-700 mb-6 flex items-center gap-2">
+                                                    <span className="w-2 h-8 bg-emerald-500 rounded-full"></span>
+                                                    PARTIDOS FINALIZADOS
+                                                    <span className="ml-2 bg-emerald-100 text-emerald-700 text-xs font-black px-3 py-1 rounded-full">{finishedMatches.length}</span>
+                                                </h3>
+                                                <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                                                    {finishedMatches.map(m => <MatchCard key={m.id} match={m} funFacts={sampleFunFacts} userId={user.id} apiBase={API_BASE} />)}
+                                                </div>
+                                            </div>
+                                        )}
+
                                         {!loading && !error && matches.length === 0 && (
                                             <div className="text-center py-24 bg-white rounded-[2rem] border border-slate-100 shadow-xl border-dashed">
                                                 <span className="text-7xl block mb-6 animate-bounce">⚽</span>
@@ -190,9 +264,6 @@ function App() {
                                                 <p className="text-slate-300 font-bold mt-2">No hay partidos programados.</p>
                                             </div>
                                         )}
-                                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                                            {matches.map(m => <MatchCard key={m.id} match={m} funFacts={sampleFunFacts} userId={user.id} apiBase={API_BASE} />)}
-                                        </div>
                                     </div>
                                     <div className="space-y-8">
                                         <h3 className="text-xl font-black text-slate-700 mb-6 flex items-center gap-2">

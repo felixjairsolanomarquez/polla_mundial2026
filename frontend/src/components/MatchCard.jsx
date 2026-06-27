@@ -37,7 +37,10 @@ const MatchCard = ({ match, funFacts, userId, apiBase }) => {
 
 
     return (
-        <div className="bg-white rounded-[2.5rem] shadow-xl border border-slate-100 overflow-hidden hover:shadow-2xl hover:scale-[1.02] transition-all duration-500 group">
+        <div className={`rounded-[2.5rem] shadow-xl overflow-hidden hover:shadow-2xl hover:scale-[1.02] transition-all duration-500 group ${isFinished
+                ? 'bg-emerald-50 border-2 border-emerald-200'
+                : 'bg-white border border-slate-100'
+            }`}>
             {/* Header info */}
             <div className="bg-slate-50 px-8 py-5 flex justify-between items-center border-b border-slate-100">
                 <div className="flex flex-col">
