@@ -14,6 +14,9 @@ class UserCreateAdmin(BaseModel):
     email: str
     password: str
 
+class UserPasswordUpdate(BaseModel):
+    new_password: str
+
 class PhaseCreate(BaseModel):
     name: str
 
@@ -128,6 +131,7 @@ def get_lookups(db: Session = Depends(get_db)):
     phases = db.query(models.Phase).all()
     groups = db.query(models.Group).all()
     teams = db.query(models.Team).all()
+    users = db.query(models.User).all()
     # Fetch all matches for the results tab so admin can re-score FINISHED matches
     # Fetch matches that are not finished for the results tab
     pending_matches = db.query(models.Match).filter(models.Match.status != models.MatchStatus.FINISHED).order_by(models.Match.date.asc()).all()
@@ -137,6 +141,7 @@ def get_lookups(db: Session = Depends(get_db)):
         "phases": [{"id": p.id, "name": p.name} for p in phases],
         "groups": [{"id": g.id, "name": g.name, "phase_id": g.phase_id} for g in groups],
         "teams": [{"id": t.id, "name": t.name, "group_id": t.group_id} for t in teams],
+        "users": [{"id": u.id, "username": u.username, "email": u.email, "is_admin": u.is_admin} for u in users],
         "pending_matches": [
             {
                 "id": m.id, 
@@ -157,3 +162,15 @@ def get_lookups(db: Session = Depends(get_db)):
             } for m in all_matches
         ]
     }
+
+@router.put("/users/{user_id}/password")
+def change_user_password(user_id: int, payload: UserPasswordUpdate, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    salt = bcrypt.gensalt()
+    hashed_password = bcrypt.hashpw(payload.new_password.encode('utf-8'), salt).decode('utf-8')
+    user.password_hash = hashed_password
+    db.commit()
+    return {"message": f"Contraseña del usuario {user.username} actualizada con éxito"}

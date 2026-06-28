@@ -41,10 +41,12 @@ const Msg = ({ msg }) => {
 
 const AdminDashboard = ({ apiBase, refreshTrigger }) => {
     const [tab, setTab] = useState('users');
-    const [lookups, setLookups] = useState({ phases: [], groups: [], teams: [], pending_matches: [], all_matches: [] });
+    const [lookups, setLookups] = useState({ phases: [], groups: [], teams: [], users: [], pending_matches: [], all_matches: [] });
     const [msg, setMsg] = useState(null);
 
     const [userForm, setUserForm] = useState({ username: '', email: '', password: '' });
+    const [editingUserId, setEditingUserId] = useState(null);
+    const [newPassword, setNewPassword] = useState('');
     const [phaseForm, setPhaseForm] = useState({ name: '' });
     const [groupForm, setGroupForm] = useState({ name: '', phase_id: '' });
     const [teamForm, setTeamForm] = useState({ name: '', flag_url: '', group_id: '' });
@@ -116,6 +118,12 @@ const AdminDashboard = ({ apiBase, refreshTrigger }) => {
                 setResultForm({ match_id: '', home_score: '', away_score: '' });
                 fetchLookups();
             }
+            else if (action === 'change-password') {
+                res = await put(`/admin/users/${payload.userId}/password`, { new_password: payload.newPassword });
+                setEditingUserId(null);
+                setNewPassword('');
+                fetchLookups();
+            }
             if (res) showMsg(res.message);
         } catch (e) { showMsg(e.message, true); }
     };
@@ -164,15 +172,44 @@ const AdminDashboard = ({ apiBase, refreshTrigger }) => {
                 <Msg msg={msg} />
 
                 {tab === 'users' && (
-                    <form onSubmit={e => { e.preventDefault(); handleSubmit('user', userForm); }} className="space-y-8 max-w-2xl">
-                        <h3 className="font-black text-slate-700 text-2xl mb-10">Reclutar Nuevo Usuario</h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
-                            <Input label="Username" type="text" placeholder="ej. diego10" value={userForm.username} onChange={e => setUserForm({ ...userForm, username: e.target.value })} required />
-                            <Input label="Email" type="email" placeholder="diego@mondo.com" value={userForm.email} onChange={e => setUserForm({ ...userForm, email: e.target.value })} required />
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-16">
+                        <form onSubmit={e => { e.preventDefault(); handleSubmit('user', userForm); }} className="space-y-8">
+                            <h3 className="font-black text-slate-700 text-2xl">Reclutar Nuevo Usuario</h3>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+                                <Input label="Username" type="text" placeholder="ej. diego10" value={userForm.username} onChange={e => setUserForm({ ...userForm, username: e.target.value })} required />
+                                <Input label="Email" type="email" placeholder="diego@mondo.com" value={userForm.email} onChange={e => setUserForm({ ...userForm, email: e.target.value })} required />
+                            </div>
+                            <Input label="Password" type="password" placeholder="••••••••" value={userForm.password} onChange={e => setUserForm({ ...userForm, password: e.target.value })} required />
+                            <div className="max-w-xs"><Btn type="submit">Dar de Alta</Btn></div>
+                        </form>
+                        <div className="bg-slate-50 rounded-[2rem] p-10 border border-slate-100 overflow-y-auto max-h-[500px]">
+                            <p className="text-xs font-black text-slate-400 uppercase mb-6 tracking-widest text-center">Usuarios Registrados ({lookups.users ? lookups.users.length : 0})</p>
+                            <div className="space-y-4">
+                                {lookups.users && lookups.users.map(u => (
+                                    <div key={u.id} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col gap-4">
+                                        <div className="flex justify-between items-center">
+                                            <div className="truncate pr-4">
+                                                <span className="font-black text-slate-700 block truncate">{u.username}</span>
+                                                <span className="text-[10px] text-slate-400 font-bold block truncate">{u.email}</span>
+                                            </div>
+                                            <span className="text-[10px] font-black uppercase text-blue-500 bg-blue-50 px-3 py-1 rounded-full whitespace-nowrap">{u.is_admin ? 'Admin' : 'Jugador'}</span>
+                                        </div>
+                                        {editingUserId === u.id ? (
+                                            <form onSubmit={e => { e.preventDefault(); handleSubmit('change-password', { userId: u.id, newPassword }); }} className="flex gap-2">
+                                                <input type="password" placeholder="Nueva clave" value={newPassword} onChange={e => setNewPassword(e.target.value)} required className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm text-slate-700 font-bold focus:outline-none focus:border-blue-400" />
+                                                <button type="submit" className="bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs uppercase px-4 py-2 rounded-xl whitespace-nowrap transition-colors">Sellar</button>
+                                                <button type="button" onClick={() => setEditingUserId(null)} className="bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-xs uppercase px-4 py-2 rounded-xl transition-colors">X</button>
+                                            </form>
+                                        ) : (
+                                            <button onClick={() => { setEditingUserId(u.id); setNewPassword(''); }} className="text-[10px] font-black text-blue-600 hover:text-blue-700 uppercase tracking-widest border border-blue-100 hover:border-blue-200 px-4 py-2.5 rounded-xl text-center transition-all bg-white shadow-sm hover:shadow active:scale-95">
+                                                Cambiar Contraseña
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                        <Input label="Password" type="password" placeholder="••••••••" value={userForm.password} onChange={e => setUserForm({ ...userForm, password: e.target.value })} required />
-                        <div className="max-w-xs"><Btn type="submit">Dar de Alta</Btn></div>
-                    </form>
+                    </div>
                 )}
 
                 {tab === 'phases' && (
