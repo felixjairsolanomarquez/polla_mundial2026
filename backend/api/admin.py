@@ -19,6 +19,7 @@ class UserPasswordUpdate(BaseModel):
 
 class PhaseCreate(BaseModel):
     name: str
+    type: Optional[str] = "POINTS"
 
 class GroupCreate(BaseModel):
     name: str
@@ -59,7 +60,11 @@ def admin_create_user(user: UserCreateAdmin, db: Session = Depends(get_db)):
 
 @router.post("/phases")
 def create_phase(phase: PhaseCreate, db: Session = Depends(get_db)):
-    new_phase = models.Phase(name=phase.name)
+    try:
+        phase_type_enum = models.PhaseType(phase.type)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Tipo de fase inválido. Debe ser 'POINTS' o 'KNOCKOUT'")
+    new_phase = models.Phase(name=phase.name, type=phase_type_enum)
     db.add(new_phase)
     db.commit()
     return {"message": "Fase creada"}
@@ -124,6 +129,168 @@ def update_match_result(match_id: int, result: MatchResult, db: Session = Depend
     return {"message": f"Resultado guardado: {match.home_score}-{match.away_score}. Puntos calculados para {len(predictions)} predicciones."}
 
 # ========================
+# PROGRESIÓN DE FASES Y CLASIFICADOS
+# ========================
+
+class ResolvePhasePayload(BaseModel):
+    phase_id: int
+    advancing_team_ids: List[int]
+
+class TeamStatusUpdate(BaseModel):
+    team_id: int
+    is_eliminated: bool
+
+class TeamStatusBatchPayload(BaseModel):
+    updates: List[TeamStatusUpdate]
+
+@router.get("/phases/{phase_id}/standings-candidates")
+def get_standings_candidates(phase_id: int, db: Session = Depends(get_db)):
+    phase = db.query(models.Phase).filter(models.Phase.id == phase_id).first()
+    if not phase:
+        raise HTTPException(status_code=404, detail="Fase no encontrada")
+    
+    # 1. Obtener grupos y sus equipos vinculados a esta fase
+    groups = db.query(models.Group).filter(models.Group.phase_id == phase_id).all()
+    teams = db.query(models.Team).all()
+    matches = db.query(models.Match).filter(
+        models.Match.phase_id == phase_id, 
+        models.Match.status == models.MatchStatus.FINISHED
+    ).all()
+    
+    # Calcular posiciones por grupo similar a standings.py
+    standings_by_group = []
+    third_placed_teams = []
+    all_teams_in_phase_ids = []
+    
+    for g in groups:
+        group_teams = [t for t in teams if t.group_id == g.id]
+        team_stats = {}
+        for t in group_teams:
+            all_teams_in_phase_ids.append(t.id)
+            team_stats[t.id] = {
+                "id": t.id,
+                "name": t.name,
+                "flag": t.flag_url,
+                "group_name": g.name,
+                "pj": 0, "pg": 0, "pe": 0, "pp": 0,
+                "gf": 0, "gc": 0, "gd": 0, "pts": 0
+            }
+            
+        for m in matches:
+            if m.home_team_id in team_stats and m.away_team_id in team_stats:
+                h = team_stats[m.home_team_id]
+                a = team_stats[m.away_team_id]
+                
+                h["pj"] += 1
+                a["pj"] += 1
+                h["gf"] += m.home_score
+                h["gc"] += m.away_score
+                a["gf"] += m.away_score
+                a["gc"] += m.home_score
+                
+                if m.home_score > m.away_score:
+                    h["pg"] += 1; h["pts"] += 3
+                    a["pp"] += 1
+                elif m.home_score < m.away_score:
+                    a["pg"] += 1; a["pts"] += 3
+                    h["pp"] += 1
+                else:
+                    h["pe"] += 1; h["pts"] += 1
+                    a["pe"] += 1; a["pts"] += 1
+                
+                h["gd"] = h["gf"] - h["gc"]
+                a["gd"] = a["gf"] - a["gc"]
+                
+        sorted_group = sorted(team_stats.values(), key=lambda x: (x["pts"], x["gd"], x["gf"]), reverse=True)
+        standings_by_group.append({
+            "group_id": g.id,
+            "group_name": g.name,
+            "teams": sorted_group
+        })
+        
+        # El tercero de cada grupo va a la lista de candidatos a mejores terceros
+        if len(sorted_group) >= 3:
+            third_placed_teams.append(sorted_group[2])
+            
+    # Ordenar los terceros colocados por su rendimiento general
+    sorted_thirds = sorted(third_placed_teams, key=lambda x: (x["pts"], x["gd"], x["gf"]), reverse=True)
+    
+    # Determinar candidatos recomendados
+    # 1. Pasan los 2 primeros puestos de cada grupo automáticamente
+    auto_qualifiers = []
+    auto_eliminated = []
+    
+    for g_stand in standings_by_group:
+        # Pasan los 2 primeros si hay equipos suficientes
+        if len(g_stand["teams"]) >= 1:
+            auto_qualifiers.append(g_stand["teams"][0]["id"])
+        if len(g_stand["teams"]) >= 2:
+            auto_qualifiers.append(g_stand["teams"][1]["id"])
+        # Los cuartos (o menores) recomendados a eliminar
+        if len(g_stand["teams"]) > 3:
+            for extra_team in g_stand["teams"][3:]:
+                auto_eliminated.append(extra_team["id"])
+                
+    # 2. De los terceros colocados, recomendamos clasificar a los mejores 8 (Regla Mundial 48 equipos)
+    recommended_thirds_ids = [t["id"] for t in sorted_thirds[:8]]
+    eliminated_thirds_ids = [t["id"] for t in sorted_thirds[8:]]
+    
+    recommended_advancing = auto_qualifiers + recommended_thirds_ids
+    recommended_eliminated = auto_eliminated + eliminated_thirds_ids
+    
+    return {
+        "groups": standings_by_group,
+        "thirds": sorted_thirds,
+        "recommended_advancing": recommended_advancing,
+        "recommended_eliminated": recommended_eliminated,
+        "all_team_ids": all_teams_in_phase_ids
+    }
+
+@router.post("/resolve-phase")
+def resolve_phase(payload: ResolvePhasePayload, db: Session = Depends(get_db)):
+    phase = db.query(models.Phase).filter(models.Phase.id == payload.phase_id).first()
+    if not phase:
+        raise HTTPException(status_code=404, detail="Fase no encontrada")
+        
+    # Obtener todos los grupos en esta fase
+    groups = db.query(models.Group).filter(models.Group.phase_id == payload.phase_id).all()
+    group_ids = [g.id for g in groups]
+    
+    teams_in_phase = []
+    if group_ids:
+        # Equipos que pertenecen a los grupos de esta fase
+        teams_in_phase = db.query(models.Team).filter(models.Team.group_id.in_(group_ids)).all()
+    else:
+        # Fallback: equipos que jugaron en esta fase
+        home_ids = db.query(models.Match.home_team_id).filter(models.Match.phase_id == payload.phase_id).distinct()
+        away_ids = db.query(models.Match.away_team_id).filter(models.Match.phase_id == payload.phase_id).distinct()
+        team_ids = list(set([r[0] for r in home_ids.all() + away_ids.all()]))
+        teams_in_phase = db.query(models.Team).filter(models.Team.id.in_(team_ids)).all()
+        
+    if not teams_in_phase:
+        raise HTTPException(status_code=400, detail="No se encontraron equipos asociados a esta fase.")
+        
+    for team in teams_in_phase:
+        if team.id in payload.advancing_team_ids:
+            team.is_eliminated = False
+        else:
+            team.is_eliminated = True
+            
+    db.commit()
+    return {"message": f"Fase resuelta con éxito. Se confirmaron {len(payload.advancing_team_ids)} clasificados y se eliminaron {len(teams_in_phase) - len(payload.advancing_team_ids)} equipos."}
+
+@router.post("/teams/batch-status")
+def batch_update_teams_status(payload: TeamStatusBatchPayload, db: Session = Depends(get_db)):
+    updated_count = 0
+    for update in payload.updates:
+        team = db.query(models.Team).filter(models.Team.id == update.team_id).first()
+        if team:
+            team.is_eliminated = update.is_eliminated
+            updated_count += 1
+    db.commit()
+    return {"message": f"Se actualizó el estado de {updated_count} equipos con éxito."}
+
+# ========================
 # LOOKUPS (Para los selects)
 # ========================
 @router.get("/lookups")
@@ -138,9 +305,9 @@ def get_lookups(db: Session = Depends(get_db)):
     all_matches = db.query(models.Match).all()
     
     return {
-        "phases": [{"id": p.id, "name": p.name} for p in phases],
+        "phases": [{"id": p.id, "name": p.name, "type": p.type.value if hasattr(p.type, 'value') else p.type} for p in phases],
         "groups": [{"id": g.id, "name": g.name, "phase_id": g.phase_id} for g in groups],
-        "teams": [{"id": t.id, "name": t.name, "group_id": t.group_id} for t in teams],
+        "teams": [{"id": t.id, "name": t.name, "group_id": t.group_id, "is_eliminated": t.is_eliminated} for t in teams],
         "users": [{"id": u.id, "username": u.username, "email": u.email, "is_admin": u.is_admin} for u in users],
         "pending_matches": [
             {

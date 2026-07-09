@@ -19,10 +19,15 @@ class User(Base):
     
     predictions = relationship("Prediction", back_populates="user", cascade="all, delete")
 
+class PhaseType(str, enum.Enum):
+    POINTS = "POINTS"
+    KNOCKOUT = "KNOCKOUT"
+
 class Phase(Base):
     __tablename__ = "phases"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), unique=True, nullable=False) # e.g. "Fase de Grupos", "Octavos de Final"
+    type = Column(Enum(PhaseType), default=PhaseType.POINTS, nullable=False)
     
     groups = relationship("Group", back_populates="phase", cascade="all, delete")
     matches = relationship("Match", back_populates="phase", cascade="all, delete")
@@ -42,6 +47,7 @@ class Team(Base):
     name = Column(String(100), unique=True, nullable=False)
     flag_url = Column(String(255))
     group_id = Column(Integer, ForeignKey("groups.id"), nullable=True) # Grupos son opcionales para la fase de eliminatorias
+    is_eliminated = Column(Boolean, default=False, nullable=False)
     
     group = relationship("Group", back_populates="teams")
 

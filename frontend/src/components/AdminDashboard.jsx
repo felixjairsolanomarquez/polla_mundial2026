@@ -47,11 +47,15 @@ const AdminDashboard = ({ apiBase, refreshTrigger }) => {
     const [userForm, setUserForm] = useState({ username: '', email: '', password: '' });
     const [editingUserId, setEditingUserId] = useState(null);
     const [newPassword, setNewPassword] = useState('');
-    const [phaseForm, setPhaseForm] = useState({ name: '' });
+    const [phaseForm, setPhaseForm] = useState({ name: '', type: 'POINTS' });
     const [groupForm, setGroupForm] = useState({ name: '', phase_id: '' });
     const [teamForm, setTeamForm] = useState({ name: '', flag_url: '', group_id: '' });
     const [matchForm, setMatchForm] = useState({ home_team_id: '', away_team_id: '', phase_id: '', date: '', stadium: '' });
     const [resultForm, setResultForm] = useState({ match_id: '', home_score: '', away_score: '' });
+    const [teamSearch, setTeamSearch] = useState('');
+    const [selectedResolvePhase, setSelectedResolvePhase] = useState('');
+    const [candidatesData, setCandidatesData] = useState(null);
+    const [advancingTeams, setAdvancingTeams] = useState([]);
 
     const [filterDate, setFilterDate] = useState('');
     const [filterPhase, setFilterPhase] = useState('');
@@ -75,6 +79,27 @@ const AdminDashboard = ({ apiBase, refreshTrigger }) => {
 
     useEffect(() => { fetchLookups(); }, [apiBase, refreshTrigger]);
 
+    useEffect(() => {
+        if (selectedResolvePhase) {
+            fetch(`${apiBase}/admin/phases/${selectedResolvePhase}/standings-candidates`)
+                .then(r => {
+                    if (!r.ok) throw new Error("Error del servidor al obtener clasificados");
+                    return r.json();
+                })
+                .then(d => {
+                    setCandidatesData(d);
+                    setAdvancingTeams(d.recommended_advancing || []);
+                })
+                .catch(e => {
+                    showMsg(e.message, true);
+                    setSelectedResolvePhase('');
+                });
+        } else {
+            setCandidatesData(null);
+            setAdvancingTeams([]);
+        }
+    }, [selectedResolvePhase, apiBase]);
+
     const post = async (url, body) => {
         const res = await fetch(`${apiBase}${url}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         const d = await res.json();
@@ -97,7 +122,8 @@ const AdminDashboard = ({ apiBase, refreshTrigger }) => {
             }
             else if (action === 'phase') {
                 res = await post('/admin/phases', payload);
-                setPhaseForm({ name: '' });
+                setPhaseForm({ name: '', type: 'POINTS' });
+                fetchLookups();
             }
             else if (action === 'group') {
                 res = await post('/admin/groups', payload);
@@ -111,6 +137,7 @@ const AdminDashboard = ({ apiBase, refreshTrigger }) => {
                 const dateIso = new Date(payload.date).toISOString();
                 res = await post('/admin/matches', { ...payload, date: dateIso });
                 setMatchForm({ home_team_id: '', away_team_id: '', phase_id: '', date: '', stadium: '' });
+                setTeamSearch('');
                 fetchLookups();
             }
             else if (action === 'result') {
@@ -213,22 +240,189 @@ const AdminDashboard = ({ apiBase, refreshTrigger }) => {
                 )}
 
                 {tab === 'phases' && (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-16">
-                        <form onSubmit={e => { e.preventDefault(); handleSubmit('phase', phaseForm); }} className="space-y-8">
-                            <h3 className="font-black text-slate-700 text-2xl">Definir Nueva Fase</h3>
-                            <Input label="Nombre de la Fase" placeholder="ej. Cuartos de Final" value={phaseForm.name} onChange={e => setPhaseForm({ name: e.target.value })} required />
-                            <Btn type="submit">Generar Fase</Btn>
-                        </form>
-                        <div className="bg-slate-50 rounded-[2rem] p-10 border border-slate-100">
-                            <p className="text-xs font-black text-slate-400 uppercase mb-6 tracking-widest">Estructura Actual</p>
-                            <div className="space-y-3">
-                                {lookups.phases.map(p => (
-                                    <div key={p.id} className="bg-white px-6 py-4 rounded-2xl text-base text-slate-600 flex justify-between shadow-sm font-bold border border-slate-100">
-                                        <span>{p.name}</span>
-                                        <span className="text-blue-300 font-mono text-sm">#{p.id}</span>
-                                    </div>
-                                ))}
+                    <div className="space-y-16">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-16">
+                            <form onSubmit={e => { e.preventDefault(); handleSubmit('phase', phaseForm); }} className="space-y-8">
+                                <h3 className="font-black text-slate-700 text-2xl">Definir Nueva Fase</h3>
+                                <Input label="Nombre de la Fase" placeholder="ej. Cuartos de Final" value={phaseForm.name} onChange={e => setPhaseForm({ ...phaseForm, name: e.target.value })} required />
+                                <Select
+                                    label="Tipo de Fase"
+                                    value={phaseForm.type}
+                                    onChange={e => setPhaseForm({ ...phaseForm, type: e.target.value })}
+                                    placeholder="Seleccionar tipo..."
+                                    options={[
+                                        { id: 'POINTS', name: 'Por Puntos (Fase de Grupos)' },
+                                        { id: 'KNOCKOUT', name: 'Eliminatoria Directa (Mata-Mata)' }
+                                    ]}
+                                    required
+                                />
+                                <Btn type="submit">Generar Fase</Btn>
+                            </form>
+                            <div className="bg-slate-50 rounded-[2rem] p-10 border border-slate-100">
+                                <p className="text-xs font-black text-slate-400 uppercase mb-6 tracking-widest">Estructura Actual</p>
+                                <div className="space-y-3">
+                                    {lookups.phases.map(p => (
+                                        <div key={p.id} className="bg-white px-6 py-4 rounded-2xl text-base text-slate-600 flex justify-between shadow-sm font-bold border border-slate-100">
+                                            <div>
+                                                <span className="block">{p.name}</span>
+                                                <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">
+                                                    {p.type === 'POINTS' ? 'Por Puntos (Grupos)' : 'Eliminatoria Directa'}
+                                                </span>
+                                            </div>
+                                            <span className="text-blue-300 font-mono text-sm">#{p.id}</span>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
+                        </div>
+
+                        {/* Asistente de Progresión */}
+                        <div className="bg-slate-50/50 p-10 rounded-[3rem] border border-slate-100 space-y-8 border border-slate-100 shadow-sm">
+                            <h3 className="font-black text-slate-700 text-2xl text-center">Asistente de Progresión de Ronda</h3>
+                            <p className="text-sm text-slate-400 font-bold text-center max-w-xl mx-auto">
+                                Selecciona una fase de grupos finalizada para calcular las posiciones, proponer los clasificados y los mejores terceros, y confirmar quiénes avanzan.
+                            </p>
+                            <div className="max-w-md mx-auto">
+                                <Select
+                                    label="Seleccionar Fase a Cerrar"
+                                    options={lookups.phases.filter(p => p.type === 'POINTS' || p.type === 'GROUP_STAGE')}
+                                    value={selectedResolvePhase}
+                                    onChange={e => setSelectedResolvePhase(e.target.value)}
+                                    placeholder="Elegir Fase de Grupos..."
+                                />
+                            </div>
+
+                            {candidatesData && (
+                                <div className="space-y-12 animate-in fade-in duration-300">
+                                    {/* Visualización de Grupos */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+                                        {candidatesData.groups.map(g => (
+                                            <div key={g.group_id} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+                                                <h4 className="font-black text-slate-700 text-lg uppercase tracking-wide border-b pb-2">{g.group_name}</h4>
+                                                <div className="space-y-2">
+                                                    {g.teams.map((t, idx) => {
+                                                        const isAdvancing = advancingTeams.includes(t.id);
+                                                        return (
+                                                            <div key={t.id} className="flex justify-between items-center text-sm font-bold text-slate-600">
+                                                                <div className="flex items-center gap-2 truncate pr-2">
+                                                                    <span className="text-slate-300 font-mono">#{idx + 1}</span>
+                                                                    {t.flag && <img src={t.flag} alt="" className="w-5 h-3.5 object-cover rounded-sm shrink-0" />}
+                                                                    <span className={`truncate ${idx < 2 ? "text-slate-800 font-black" : ""}`}>{t.name}</span>
+                                                                </div>
+                                                                <div className="flex items-center gap-4 text-xs font-mono text-slate-400 shrink-0">
+                                                                    <span>{t.pts} pts</span>
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={isAdvancing}
+                                                                        onChange={e => {
+                                                                            if (e.target.checked) {
+                                                                                setAdvancingTeams([...advancingTeams, t.id]);
+                                                                            } else {
+                                                                                setAdvancingTeams(advancingTeams.filter(id => id !== t.id));
+                                                                            }
+                                                                        }}
+                                                                        className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Clasificación de Terceros */}
+                                    {candidatesData.thirds && candidatesData.thirds.length > 0 && (
+                                        <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+                                            <h4 className="font-black text-slate-700 text-lg uppercase tracking-wide border-b pb-2 flex justify-between items-center">
+                                                <span>Tabla General de Terceros</span>
+                                                <span className="text-[10px] text-blue-500 font-black tracking-widest uppercase bg-blue-50 px-3 py-1 rounded-full text-[10px]">Top 8 Pasan</span>
+                                            </h4>
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-left border-collapse text-sm">
+                                                    <thead>
+                                                        <tr className="border-b text-slate-400 text-xs font-black uppercase tracking-wider">
+                                                            <th className="pb-3 text-slate-400">Pos</th>
+                                                            <th className="pb-3 text-slate-400">Grupo</th>
+                                                            <th className="pb-3 text-slate-400 animate-none">Equipo</th>
+                                                            <th className="pb-3 text-center text-slate-400">Pts</th>
+                                                            <th className="pb-3 text-center text-slate-400">DG</th>
+                                                            <th className="pb-3 text-center text-slate-400">GF</th>
+                                                            <th className="pb-3 text-center text-slate-400">Habilitado</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {candidatesData.thirds.map((t, idx) => {
+                                                            const isAdvancing = advancingTeams.includes(t.id);
+                                                            const isRecommended = idx < 8; // Top 8
+                                                            return (
+                                                                <tr key={t.id} className={`border-b border-slate-50 last:border-0 ${isRecommended ? 'bg-emerald-50/20' : ''}`}>
+                                                                    <td className="py-3 font-mono font-bold text-slate-400">#{idx + 1}</td>
+                                                                    <td className="py-3 font-bold text-slate-400 uppercase tracking-widest text-[10px]">{t.group_name}</td>
+                                                                    <td className="py-3 font-black text-slate-700 flex items-center gap-3">
+                                                                        {t.flag && <img src={t.flag} alt="" className="w-5 h-3.5 object-cover rounded-sm" />}
+                                                                        <span>{t.name}</span>
+                                                                        {isRecommended && <span className="text-[9px] uppercase font-black px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-lg whitespace-nowrap">Top 8 Recomendado</span>}
+                                                                    </td>
+                                                                    <td className="py-3 text-center font-mono font-bold text-slate-600">{t.pts}</td>
+                                                                    <td className="py-3 text-center font-mono font-bold text-slate-600">{t.gd}</td>
+                                                                    <td className="py-3 text-center font-mono font-bold text-slate-600">{t.gf}</td>
+                                                                    <td className="py-3 text-center">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={isAdvancing}
+                                                                            onChange={e => {
+                                                                                if (e.target.checked) {
+                                                                                    setAdvancingTeams([...advancingTeams, t.id]);
+                                                                                } else {
+                                                                                    setAdvancingTeams(advancingTeams.filter(id => id !== t.id));
+                                                                                }
+                                                                            }}
+                                                                            className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
+                                                                        />
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Confirmar */}
+                                    <div className="max-w-md mx-auto space-y-4">
+                                        <div className="text-center font-bold text-sm text-slate-500 bg-amber-50 text-amber-700 p-4 rounded-2xl border border-amber-100">
+                                            Se confirmarán <strong className="text-amber-800">{advancingTeams.length} clasificados</strong>.
+                                            El resto de los equipos de esta fase se marcarán como <strong>ELIMINADOS</strong> y dejarán de aparecer en las listas de partidos nuevos.
+                                        </div>
+                                        <Btn
+                                            color="green"
+                                            onClick={async () => {
+                                                if (window.confirm("¿Seguro que deseas catalogar y aplicar estos avances? Los equipos desmarcados serán eliminados.")) {
+                                                    try {
+                                                        const response = await fetch(`${apiBase}/admin/resolve-phase`, {
+                                                            method: 'POST',
+                                                            headers: { 'Content-Type': 'application/json' },
+                                                            body: JSON.stringify({ phase_id: parseInt(selectedResolvePhase), advancing_team_ids: advancingTeams })
+                                                        });
+                                                        const data = await response.json();
+                                                        if (!response.ok) throw new Error(data.detail || 'Error');
+                                                        showMsg(data.message);
+                                                        setSelectedResolvePhase('');
+                                                        fetchLookups();
+                                                    } catch (e) {
+                                                        showMsg(e.message, true);
+                                                    }
+                                                }
+                                            }}
+                                        >
+                                            Aplicar Avance y Guardar Clasificados
+                                        </Btn>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
@@ -258,10 +452,38 @@ const AdminDashboard = ({ apiBase, refreshTrigger }) => {
                             <Select label="Grupo Asignado" options={lookups.groups} value={teamForm.group_id} onChange={e => setTeamForm({ ...teamForm, group_id: e.target.value })} />
                             <Btn type="submit">Guardar Selección</Btn>
                         </form>
-                        <div className="bg-slate-50 rounded-[2rem] p-8 border border-slate-100 overflow-y-auto max-h-[400px]">
-                            <p className="text-xs font-black text-slate-400 uppercase mb-6 tracking-widest text-center">Base de Datos de Equipos ({lookups.teams.length})</p>
-                            <div className="grid grid-cols-2 gap-4">
-                                {lookups.teams.map(t => <div key={t.id} className="text-sm bg-white p-4 rounded-xl text-slate-600 border border-slate-100 font-black truncate shadow-sm">#{t.id} {t.name}</div>)}
+                        <div className="bg-slate-50 rounded-[2rem] p-8 border border-slate-100 overflow-y-auto max-h-[500px]">
+                            <p className="text-xs font-black text-slate-400 uppercase mb-6 tracking-widest text-center">Control de Equipos ({lookups.teams.length})</p>
+                            <div className="space-y-3">
+                                {lookups.teams.map(t => (
+                                    <div key={t.id} className="text-sm bg-white p-5 rounded-2xl text-slate-600 border border-slate-100 font-bold flex justify-between items-center shadow-sm">
+                                        <div className="flex items-center gap-2 truncate pr-2">
+                                            <span className="text-slate-300 font-mono">#{t.id}</span>
+                                            <span>{t.name}</span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                try {
+                                                    const res = await fetch(`${apiBase}/admin/teams/batch-status`, {
+                                                        method: 'POST',
+                                                        headers: { 'Content-Type': 'application/json' },
+                                                        body: JSON.stringify({ updates: [{ team_id: t.id, is_eliminated: !t.is_eliminated }] })
+                                                    });
+                                                    const data = await res.json();
+                                                    if (!res.ok) throw new Error(data.detail || 'Error');
+                                                    fetchLookups();
+                                                    showMsg(data.message);
+                                                } catch (e) {
+                                                    showMsg(e.message, true);
+                                                }
+                                            }}
+                                            className={`text-[9px] uppercase font-black px-3.5 py-1.5 rounded-full transition-all active:scale-95 whitespace-nowrap ${t.is_eliminated ? 'bg-rose-50 text-rose-500 hover:bg-rose-100' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}
+                                        >
+                                            {t.is_eliminated ? '🔥 Eliminado' : '✅ Activo'}
+                                        </button>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     </div>
@@ -275,13 +497,23 @@ const AdminDashboard = ({ apiBase, refreshTrigger }) => {
                                 <Select label="Etapa del Torneo" options={lookups.phases} value={matchForm.phase_id} onChange={e => setMatchForm({ ...matchForm, phase_id: e.target.value })} required />
                                 <Input label="Fecha Oficial" type="datetime-local" value={matchForm.date} onChange={e => setMatchForm({ ...matchForm, date: e.target.value })} required />
                             </div>
-                            <div className="bg-slate-100 p-8 rounded-[2rem] border border-slate-200">
-                                <Select label="Filtrar Equipos por Grupo" options={lookups.groups} value={filterGroup} onChange={e => setFilterGroup(e.target.value)} placeholder="Todos los grupos..." />
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 bg-slate-100 p-8 rounded-[2.5rem] border border-slate-200">
+                                <Select label="Filtrar por Grupo (Opcional)" options={lookups.groups} value={filterGroup} onChange={e => setFilterGroup(e.target.value)} placeholder="Todos los grupos..." />
+                                <Input
+                                    label="Buscar Selección"
+                                    placeholder="ej. Colombia"
+                                    value={teamSearch}
+                                    onChange={e => setTeamSearch(e.target.value)}
+                                />
                             </div>
                             <div className="flex flex-col lg:flex-row items-center gap-10 bg-white p-10 rounded-[3rem] border border-slate-100 shadow-inner">
                                 <Select
                                     label="Host / Local"
-                                    options={lookups.teams.filter(t => !filterGroup || t.group_id === parseInt(filterGroup))}
+                                    options={lookups.teams.filter(t =>
+                                        !t.is_eliminated &&
+                                        (!filterGroup || t.group_id === parseInt(filterGroup)) &&
+                                        (!teamSearch || t.name.toLowerCase().includes(teamSearch.toLowerCase()))
+                                    )}
                                     value={matchForm.home_team_id}
                                     onChange={e => setMatchForm({ ...matchForm, home_team_id: e.target.value })}
                                     required
@@ -289,7 +521,11 @@ const AdminDashboard = ({ apiBase, refreshTrigger }) => {
                                 <div className="text-slate-200 font-black text-6xl italic">VS</div>
                                 <Select
                                     label="Visitante"
-                                    options={lookups.teams.filter(t => !filterGroup || t.group_id === parseInt(filterGroup))}
+                                    options={lookups.teams.filter(t =>
+                                        !t.is_eliminated &&
+                                        (!filterGroup || t.group_id === parseInt(filterGroup)) &&
+                                        (!teamSearch || t.name.toLowerCase().includes(teamSearch.toLowerCase()))
+                                    )}
                                     value={matchForm.away_team_id}
                                     onChange={e => setMatchForm({ ...matchForm, away_team_id: e.target.value })}
                                     required
